@@ -79,12 +79,28 @@
     </div>
 
     <script type="module">
-        // Firebase মডিউলগুলো ইম্পোর্ট করা হচ্ছে
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // npm install firebaseFirebase মডিউলগুলো ইম্পোর্ট করা হচ্ছে  
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCZBhVGqMetyDmDWPPGXxm-DbSqNzvTzlg",
+  authDomain: "my-todo-list-live.firebaseapp.com",
+  projectId: "my-todo-list-live",
+  storageBucket: "my-todo-list-live.firebasestorage.app",
+  messagingSenderId: "1021301065962",
+  appId: "1:1021301065962:web:5075af88d1f79febcd6f93",
+  measurementId: "G-EPYZCLCS7J"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
         // Firestore লগিং ডিবাগ মোডে সেট করা হলো (ত্রুটি দেখতে সুবিধা হবে)
         setLogLevel('debug');
 
@@ -342,3 +358,4 @@
     </script>
 </body>
 </html>
+
