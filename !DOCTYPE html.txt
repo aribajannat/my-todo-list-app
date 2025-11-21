@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>আমার টু-ডু লিস্ট</title>
+    <!-- Tailwind CSS লোড করা হচ্ছে -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ল্যুসাইড আইকন (Lucide Icons) লোড করা হচ্ছে -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* ফন্ট হিসেবে 'Inter' ব্যবহার করা হচ্ছে */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="w-full max-w-lg bg-white shadow-2xl rounded-xl p-6 md:p-8 space-y-6">
+        <header class="text-center">
+            <h1 class="text-4xl font-extrabold text-blue-600 mb-2">
+                আমার টু-ডু লিস্ট
+            </h1>
+            <p class="text-gray-500 text-sm">কাজ যোগ করুন, সম্পন্ন করুন, আর মুছে ফেলুন।</p>
+        </header>
+
+        <!-- ব্যবহারকারী আইডি প্রদর্শন -->
+        <div id="auth-status" class="text-xs text-gray-500 bg-gray-100 p-3 rounded-lg flex items-center justify-between shadow-inner">
+            <div class="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user mr-2 text-blue-500"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span id="user-id-display">লগইন হচ্ছে...</span>
+            </div>
+            <div id="loading-indicator" class="hidden text-blue-500 font-semibold">
+                লোড হচ্ছে...
+            </div>
+        </div>
+
+        <!-- নতুন কাজ যোগ করার ফর্ম -->
+        <form id="add-task-form" class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+            <input
+                type="text"
+                id="task-input"
+                placeholder="নতুন কাজের বিবরণ লিখুন..."
+                required
+                class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 shadow-sm"
+            >
+            <button
+                type="submit"
+                id="add-task-btn"
+                class="bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-150 flex items-center justify-center shadow-md hover:shadow-lg disabled:opacity-50"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-circle mr-1"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                যোগ করুন
+            </button>
+        </form>
+
+        <!-- টু-ডু তালিকা -->
+        <div id="task-list" class="space-y-3 pt-2">
+            <!-- কাজগুলো এখানে JavaScript দ্বারা লোড হবে -->
+            <p id="empty-message" class="text-center text-gray-400 p-4 rounded-lg bg-gray-50 hidden">
+                কোনো কাজ নেই! একটি নতুন কাজ যোগ করুন।
+            </p>
+        </div>
+
+        <!-- ত্রুটি বার্তা প্রদর্শন ক্ষেত্র -->
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
+            <strong class="font-bold">ত্রুটি!</strong>
+            <span class="block sm:inline" id="error-text"></span>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Firebase মডিউলগুলো ইম্পোর্ট করা হচ্ছে
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firestore লগিং ডিবাগ মোডে সেট করা হলো (ত্রুটি দেখতে সুবিধা হবে)
+        setLogLevel('debug');
+
+        // গ্লোবাল ভ্যারিয়েবল ডিক্লেয়ারেশন
+        let db;
+        let auth;
+        let userId = null;
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-todo-app';
+        let isAuthReady = false;
+
+        // HTML উপাদানগুলো নির্বাচন
+        const taskInput = document.getElementById('task-input');
+        const addTaskForm = document.getElementById('add-task-form');
+        const taskList = document.getElementById('task-list');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const emptyMessage = document.getElementById('empty-message');
+        const addTaskBtn = document.getElementById('add-task-btn');
+
+        // ত্রুটি বার্তা দেখানোর ফাংশন
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+            setTimeout(() => {
+                errorMessage.classList.add('hidden');
+            }, 5000);
+        }
+
+        // লোডিং স্টেট সেট করার ফাংশন
+        function setLoading(isLoading) {
+            if (isLoading) {
+                loadingIndicator.classList.remove('hidden');
+                addTaskBtn.disabled = true;
+                taskInput.disabled = true;
+            } else {
+                loadingIndicator.classList.add('hidden');
+                addTaskBtn.disabled = false;
+                taskInput.disabled = false;
+            }
+        }
+
+        // Firebase ইনিশিয়ালাইজেশন এবং অথেন্টিকেশন
+        async function initializeFirebase() {
+            try {
+                // গ্লোবাল ভ্যারিয়েবল ব্যবহার করে Firebase কনফিগারেশন লোড করা
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+                if (Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("Firebase Configuration পাওয়া যায়নি।");
+                }
+
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // ব্যবহারকারী সাইন-ইন প্রক্রিয়া
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Auth স্টেট পরিবর্তন হলে তা পর্যবেক্ষণ করা
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = ইউজার আইডি: ${userId};
+                        isAuthReady = true;
+                        // Auth তৈরি হওয়ার পর ডেটা লোড শুরু
+                        loadTasks();
+                    } else {
+                        userId = null;
+                        userIdDisplay.textContent = 'অথেন্টিকেশন ব্যর্থ হয়েছে।';
+                        isAuthReady = true;
+                    }
+                });
+
+            } catch (e) {
+                console.error("Firebase ইনিশিয়ালাইজেশন বা অথেন্টিকেশন ত্রুটি:", e);
+                showError("অ্যাপ লোড করতে সমস্যা হচ্ছে। ডেটাবেস কনফিগারেশন চেক করুন।");
+                userIdDisplay.textContent = 'লোড করা সম্ভব হয়নি।';
+            }
+        }
+
+        // Firestore থেকে ডেটা পাথ তৈরি করার ফাংশন (ব্যক্তিগত ডেটা)
+        function getTaskCollectionPath(uid) {
+            // ব্যক্তিগত ডেটা পাথ: /artifacts/{appId}/users/{userId}/tasks
+            return artifacts/${APP_ID}/users/${uid}/tasks;
+        }
+
+        // ডেটাবেসে নতুন কাজ যোগ করা
+        async function addTaskToFirestore(taskText) {
+            if (!userId || !db) {
+                showError("ডেটাবেস প্রস্তুত নয়। আবার চেষ্টা করুন।");
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const docRef = await addDoc(collection(db, getTaskCollectionPath(userId)), {
+                    text: taskText,
+                    completed: false,
+                    createdAt: Date.now()
+                });
+                console.log("ডকুমেন্ট আইডি:", docRef.id);
+            } catch (e) {
+                console.error("কাজ যোগ করার ত্রুটি:", e);
+                showError("কাজটি যোগ করতে সমস্যা হয়েছে।");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // ডেটাবেসে কাজের স্ট্যাটাস আপডেট করা
+        async function toggleTaskComplete(taskId, completed) {
+            if (!userId || !db) {
+                showError("ডেটাবেস প্রস্তুত নয়।");
+                return;
+            }
+
+            try {
+                const taskDocRef = doc(db, getTaskCollectionPath(userId), taskId);
+                await updateDoc(taskDocRef, {
+                    completed: completed
+                });
+            } catch (e) {
+                console.error("কাজ আপডেট করার ত্রুটি:", e);
+                showError("কাজটির স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে।");
+            }
+        }
+
+        // ডেটাবেস থেকে কাজ মুছে ফেলা
+        async function deleteTaskFromFirestore(taskId) {
+            if (!userId || !db) {
+                showError("ডেটাবেস প্রস্তুত নয়।");
+                return;
+            }
+
+            try {
+                const taskDocRef = doc(db, getTaskCollectionPath(userId), taskId);
+                await deleteDoc(taskDocRef);
+            } catch (e) {
+                console.error("কাজ মোছার ত্রুটি:", e);
+                showError("কাজটি মুছে ফেলতে সমস্যা হয়েছে।");
+            }
+        }
+
+        // HTML-এ কাজের আইটেম তৈরি করার ফাংশন
+        function createTaskElement(task) {
+            const li = document.createElement('li');
+            li.id = task-${task.id};
+            li.className = p-4 flex items-center justify-between rounded-lg shadow-md transition duration-200 ease-in-out ${task.completed ? 'bg-green-50 border-l-4 border-green-500 line-through text-gray-500' : 'bg-white border-l-4 border-blue-500 hover:shadow-lg'};
+
+            // চেকবক্স ও টেক্সট কন্টেইনার
+            const taskContent = document.createElement('div');
+            taskContent.className = 'flex items-center flex-1 min-w-0';
+
+            // চেকবক্স
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = task.completed;
+            checkbox.className = 'w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 transition duration-150 cursor-pointer';
+
+            // কাজ সম্পন্ন করার ইভেন্ট হ্যান্ডলার
+            checkbox.addEventListener('change', () => {
+                toggleTaskComplete(task.id, checkbox.checked);
+            });
+
+            // কাজের বিবরণ
+            const taskText = document.createElement('span');
+            taskText.textContent = task.text;
+            taskText.className = 'ml-3 text-sm md:text-base font-medium break-words max-w-full';
+
+            taskContent.appendChild(checkbox);
+            taskContent.appendChild(taskText);
+
+            // মুছুন বাটন
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'ml-4 p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition duration-150 shadow-sm hover:shadow-md flex-shrink-0';
+            deleteButton.innerHTML = <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>;
+
+            // কাজ মোছার ইভেন্ট হ্যান্ডলার
+            deleteButton.addEventListener('click', () => {
+                deleteTaskFromFirestore(task.id);
+            });
+
+            li.appendChild(taskContent);
+            li.appendChild(deleteButton);
+            return li;
+        }
+
+        // Firestore থেকে রিয়েল-টাইমে ডেটা লোড করা
+        function loadTasks() {
+            if (!isAuthReady || !userId || !db) return;
+
+            setLoading(true);
+
+            // Firestore ক্যোয়ারি সেট করা: বর্তমান ব্যবহারকারীর কাজগুলো লোড করা
+            const tasksRef = collection(db, getTaskCollectionPath(userId));
+            // উল্লেখ্য: Firestore-এ orderBy() ব্যবহার করলে ইনডেক্সিং এর সমস্যা হতে পারে।
+            // আমরা ডেটা নিয়ে এসে JavaScript-এ সর্ট করব।
+            const q = query(tasksRef);
+
+            // onSnapshot ব্যবহার করে রিয়েল-টাইম লিসেনার সেট করা
+            const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                const tasks = [];
+                querySnapshot.forEach((doc) => {
+                    tasks.push({ id: doc.id, ...doc.data() });
+                });
+
+                // JavaScript-এ createdAt অনুযায়ী সর্ট করা
+                tasks.sort((a, b) => b.createdAt - a.createdAt); // নতুন কাজ উপরে দেখাবে
+
+                // HTML লিস্ট আপডেট করা
+                taskList.innerHTML = '';
+                if (tasks.length === 0) {
+                    emptyMessage.classList.remove('hidden');
+                } else {
+                    emptyMessage.classList.add('hidden');
+                    tasks.forEach(task => {
+                        taskList.appendChild(createTaskElement(task));
+                    });
+                }
+                setLoading(false);
+
+            }, (error) => {
+                console.error("রিয়েল-টাইম ডেটা লোড করার ত্রুটি:", error);
+                showError("কাজগুলো লোড করা যায়নি। ইন্টারনেট বা ডেটাবেস সংযোগ চেক করুন।");
+                setLoading(false);
+            });
+
+            // অ্যাপ বন্ধ হলে লিসেনার বন্ধ করার জন্য একটি রিটার্ন ফাংশন
+            // এই সিঙ্গেল-ফাইল অ্যাপ্লিকেশনের জন্য এটি অপ্রয়োজনীয়, কিন্তু এটি একটি ভালো অভ্যাস।
+            // return unsubscribe;
+        }
+
+        // নতুন কাজ যোগ করার ফর্ম সাবমিট ইভেন্ট হ্যান্ডলার
+        addTaskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const taskText = taskInput.value.trim();
+
+            if (taskText) {
+                addTaskToFirestore(taskText);
+                taskInput.value = ''; // ইনপুট ফিল্ড খালি করা
+            } else {
+                showError("দয়া করে কাজের বিবরণ লিখুন।");
+            }
+        });
+
+        // অ্যাপ শুরু করা
+        initializeFirebase();
+
+    </script>
+</body>
+</html>
